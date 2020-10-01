@@ -1,0 +1,61 @@
+#!/bin/bash
+
+set -exu
+
+echo "Logging to ECR ..."
+ECR_TOKEN="$(aws ecr get-login-password)"
+docker login --username AWS --password "${ECR_TOKEN}" "${AWS_ECR_URL}"
+
+echo "Downloading model $MODEL_URL ..."
+aws s3 cp "$MODEL_URL" ./src/model.zip
+
+network_mode=host
+if container_id=$(grep -E 'net_cls|cpu'  /proc/self/cgroup -w|head -1|cut -f3 -d:|awk -F/ '{print $NF}'); then
+    network_mode="container:$container_id"
+fi
+export WORKER_IMAGE="${AWS_ECR_URL}:${WORKER_ID}"
+
+echo "Building worker image: ${WORKER_IMAGE}"
+s2i build \
+    --assemble-user=1001 \
+    --network=$network_mode \
+    --loglevel=${STI_LOG_LEVEL:-1} \
+    --rm \
+    ./src "$BUILDER_IMAGE" "${WORKER_IMAGE}"
+
+docker push "${WORKER_IMAGE}"
+
+if [ "${KEEP_LOCAL_IMAGE:-false}" == false ]; then
+    docker image rm "${WORKER_IMAGE}" || true
+fi
+
+cat <<_EOF
+#################################
+Execute to create a worker-runner
+#################################
+
+kubectl create -f - <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: worker-runner-${WORKER_ID}
+  labels:
+    worker-id: ${WORKER_ID}
+    python-version: ${PYTHON_VERSION}
+spec:
+  template:
+    spec:
+    - container:
+      - name: worker
+        image: ${WORKER_IMAGE}
+      volumeMounts:
+      - name: dataset
+        mountPath: /dataset
+        readOnly: true
+    volumes:
+    - name: dataset
+      hostPath:
+        path: /dataset/tuberculose
+EOF
+#################################
+_EOF

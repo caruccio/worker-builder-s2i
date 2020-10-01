@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: worker-runner-${WORKER_ID}
+  labels:
+    worker-id: ${WORKER_ID}
+    python-version: ${PYTHON_VERSION}
+spec:
+  template:
+    spec:
+    - container:
+      - name: worker
+        image: ${AWS_ECR_URL}/worker-runner-$WORKER_ID
+      volumeMounts:
+      - name: dataset
+        mountPath: /dataset
+        readOnly: true
+    volumes:
+    - name: dataset
+      hostPath:
+        path: /dataset/tuberculose
+

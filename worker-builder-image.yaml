@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: worker-builder-python-${python_version}-${_id}
+  labels:
+    worker-id: "${_id}"
+    python-version: "${python_version}"
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: builder
+        image: caruccio/worker-builder-s2i:latest
+        envFrom:
+        - secretRef:
+            name: deploy-secret
+        env:
+        - name: BUILDER_IMAGE
+          value: centos/python-${python_version}-centos7
+        - name: WORKER_ID
+          value: "${_id}"
+        - name: PYTHON_VERSION
+          value: "${python_version}"
+        - name: MODEL_URL
+          value: "${model_url}"
+        - name: STI_LOG_LEVEL
+          value: "6"
+        volumeMounts:
+        - name: dockersock
+          mountPath: /var/run/docker.sock
+        securityContext:
+          privileged: true
+          runAsUser: 0
+      volumes:
+      - name: dockersock
+        hostPath:
+          path: /var/run/docker.sock
