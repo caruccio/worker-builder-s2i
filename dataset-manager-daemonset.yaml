@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dataset-manager
+  namespace: validator
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: dataset-manager
+  template:
+    metadata:
+      labels:
+        app: dataset-manager
+    spec:
+      nodeSelector:
+        role: user
+      containers:
+      - command:
+        - /bin/sh
+        - -xc
+        - aws s3 sync s3://deploy-validator/Datasets/ /host/datasets/ && /bin/cat
+        tty: true
+        stdin: true
+        image: amazon/aws-cli:2.0.54
+        name: awscli
+        envFrom:
+        - secretRef:
+            name: deploy-secret
+        volumeMounts:
+        - mountPath: /host
+          name: hostroot
+      hostNetwork: true
+      tolerations:
+      - effect: NoExecute
+        operator: Exists
+      volumes:
+      - hostPath:
+          path: /
+        name: hostroot
